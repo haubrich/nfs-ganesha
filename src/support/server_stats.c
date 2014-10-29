@@ -1544,6 +1544,66 @@ void server_dbus_v42_iostats(struct nfsv41_stats *v42p, DBusMessageIter *iter)
 	server_dbus_iostats(&v42p->write, iter);
 }
 
+/**
+ * @brief Return all IO stats of an export
+ * DBUS_TYPE_ARRAY, "qs(tttttt)(tttttt)"
+ * 		export id
+ * 		string containing the protocol version
+ * 		read statistics structure (requested, transferred, total, errors, latency, queue wait)
+ * 		write statistics structure (requested, transferred, total, errors, latency, queue wait)
+ */
+
+void server_dbus_all_iostats(struct export_stats *export_statistics, DBusMessageIter *array_iter)
+{
+	const char *protocolversions[] = {"NFSv3", "NFSv40", "NFSv41", "NFSv42", ""};
+	const char **protocolversion = protocolversions;
+	DBusMessageIter struct_iter;
+	struct xfer_op *read, *write;
+	bool havestats;
+
+	while (strcmp(*protocolversion, "") != 0) {
+
+		havestats = false;
+
+		if (strcmp(*protocolversion, "NFSv3") == 0 && export_statistics->st.nfsv3 != NULL) {
+			havestats = true;
+			read = &(export_statistics->st.nfsv3->read);
+			write = &(export_statistics->st.nfsv3->write);
+		} else if (strcmp(*protocolversion, "NFSv40") == 0 && export_statistics->st.nfsv40 != NULL) {
+			havestats = true;
+			read = &(export_statistics->st.nfsv40->read);
+			write = &(export_statistics->st.nfsv40->write);
+		} else if (strcmp(*protocolversion, "NFSv41") == 0 && export_statistics->st.nfsv41 != NULL) {
+			havestats = true;
+			read = &(export_statistics->st.nfsv41->read);
+			write = &(export_statistics->st.nfsv41->write);
+		} else if (strcmp(*protocolversion, "NFSv42") == 0 && export_statistics->st.nfsv41 != NULL) {
+			havestats = true;
+			read = &(export_statistics->st.nfsv41->read);
+			write = &(export_statistics->st.nfsv41->write);
+		}
+
+		if (havestats) {
+			LogFullDebug(COMPONENT_DBUS, " Found %s I/O stats for export ID %d", *protocolversion, export_statistics->export.export_id);
+
+			/* create a structure container iterator for the export statistics */
+			dbus_message_iter_open_container(array_iter, DBUS_TYPE_STRUCT, NULL, &struct_iter);
+
+			/* append export statistics */
+			dbus_message_iter_append_basic(&struct_iter, DBUS_TYPE_UINT16, &(export_statistics->export.export_id));
+			dbus_message_iter_append_basic(&struct_iter, DBUS_TYPE_STRING, protocolversion);
+			server_dbus_iostats(read, &struct_iter);
+			server_dbus_iostats(write, &struct_iter);
+
+			/* close the structure container */
+			dbus_message_iter_close_container(array_iter, &struct_iter);
+		}
+
+		/* next protocolversion */
+		protocolversion = protocolversion + 1;
+	}
+}
+
 void server_dbus_total_ops(struct export_stats *export_st,
 			   DBusMessageIter *iter)
 {
